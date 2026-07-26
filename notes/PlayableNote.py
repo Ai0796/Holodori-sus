@@ -24,16 +24,16 @@ class PlayableNote():
         
     def processNote(self):
         
-        self.weight = 10
+        self.weight = 100
         
         if self.long_mid or self.relay:
-            self.weight = 1
+            self.weight = 10
             
-        if self.critical and self.flick:
-            self.weight *= 3
+        if self.flick and not self.long_end:
+            self.weight *= 1.05
             
-        elif self.critical:
-            self.weight *= 2
+        self.weight = int(self.weight)
+
         self.real_weight = self.weight
         
     def to_str(self):

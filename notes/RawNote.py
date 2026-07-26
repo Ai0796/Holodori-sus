@@ -70,8 +70,8 @@ class RawNote:
             if note_type == 6:
                 self.note_description = 'Flick Dummy'
                 
-        if self.note_description is None:
-            print(note_class, note_type)
+        # if self.note_description is None:
+        #     print(note_class, note_type)
                 
     def __str__(self):
         return f"Measure: {self.measure}, Offset: {self.offset}, Class: {self.note_class}, Start Pos: {self.start_pos}, Long Note ID: {self.long_note_id}, Width: {self.width}, Type: {self.note_type}, Line Number: {self.line_number}, Description: {getattr(self, 'note_description', 'N/A')}"
