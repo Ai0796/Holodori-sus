@@ -32,6 +32,18 @@ class MasterData():
                 return item.get(key)
         
         return None
+    
+    def getEntity(self, asset, id, lookup='id'):
+        if not hasattr(self, asset):
+            raise AttributeError(f"'MasterData' object has no attribute '{asset}'")
+        
+        asset_data = getattr(self, asset)
+        
+        for item in asset_data:
+            if item.get(lookup) == id:
+                return item
+        
+        return None
             
     def __getattr__(self, name):
         if name in self._files:
