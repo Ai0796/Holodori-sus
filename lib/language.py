@@ -16,8 +16,7 @@ class Lang():
             
             assetName = re.match(r'Lang(.+)_\w+\.json', os.path.basename(fp)).group(1)
             
-            self._files[assetName] = fp
-            
+            self._files[assetName] = str(fp)
     
     def __getattr__(self, name):
         if name in self._files:
@@ -33,6 +32,21 @@ class Lang():
                 if 'id' not in value: continue
                 
                 addDict[value['id']] = value.get('text', None)
+                
+            ## for effects such as skill effects, the descriptions are auto translated,
+            ## As such we have to check if a fallback file exists
+            fp = fp.name ## I have no clue why it becomes a io.TextIOWrapper object, but it does. So we have to get the name attribute to get the actual file path
+            generated_fp = str(fp.replace(f'Lang{name}', f'LangGenerated{name}'))
+
+            if os.path.exists(generated_fp):
+                
+                with open(generated_fp, 'r', encoding='utf-8') as fp:
+                    data = json.load(fp)
+                    
+                for value in data:
+                    if 'id' not in value: continue
+                    
+                    addDict[value['id']] = value.get('text', None)
             
             setattr(self, name, addDict)
             
