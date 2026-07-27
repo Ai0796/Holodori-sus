@@ -3,11 +3,12 @@ import re
 import json
 import numpy as np
 
-skillPath = 'master_data/json/LiveActiveSkillLevel.json'
+from lib.master_data import MasterData
+from lib.language import Lang
 
-class Skill():
+class ActiveSkill():
     
-    def __init__(self):
+    def __init__(self, master_data: MasterData, lang: Lang):
         self.skill_id = None
         self.level = None
         self.skill_effect = None
@@ -20,9 +21,11 @@ class Skill():
         
         self.note_weights = None
         
+        self.master_data = master_data
+        self.lang = lang
+        
     def initByName(self, skill_id):
-        with open(skillPath, 'r', encoding='utf-8') as f:
-            skills = json.load(f)
+        skills = self.master_data.LiveActiveSkillLevel
             
         for skill in skills:
             if skill['liveActiveSkillId'] == skill_id and skill['level'] == 1:
@@ -38,7 +41,8 @@ class Skill():
         self.cooldown = skill_object.get('coolTimeMillisecond', None)
         self.activation_chance = skill_object.get('activationProbabilityPermilMultiply', None)
         self.duration = skill_object.get('effectDurationMillisecond', None)
-        self.description = skill_object.get('descriptionLangId', None)
+        self.descriptionId = skill_object.get('descriptionLangId', None)
+        self.description = self.lang.LiveActiveSkillLevel.get(self.descriptionId, None)
     
     def initByData(self, skill_id, level, skill_effect, additional_skill_condition, additional_skill_effect, cooldown, activation_chance, duration, description):
         self.skill_id = skill_id
