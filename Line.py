@@ -89,7 +89,7 @@ class Line():
             self.parseMeta()
             return
             
-        elif match := re.match(r'^#(\d{3}[a-z0-9]{2,3}):(.*)$', self.line):
+        elif match := re.match(r'^#(\d{3}[a-z0-9A-Z]{2,3}):(.*)$', self.line):
 
             self.type = 'note'
             self.label, self.data = match.groups()
