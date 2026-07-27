@@ -24,10 +24,10 @@ class PlayableNote():
         
     def processNote(self):
         
-        self.weight = 100
+        self.weight = 1000
         
         if self.long_mid or self.relay:
-            self.weight = 10
+            self.weight = 100
             
         if self.flick and not self.long_end:
             self.weight *= 1.05
