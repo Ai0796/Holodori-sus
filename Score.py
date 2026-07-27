@@ -44,12 +44,36 @@ class Score():
             beat = note.beat
             note.time_offset = (beat * measureLength) / BPM * 60
             
+        for skill in self.skills:
+            skill.time_offset = (skill.beat * measureLength) / BPM * 60
+            
     def addCombo(self):
         self.playableNotes.sort(key=lambda note: note.beat)
         
         for i, note in enumerate(self.playableNotes, 1):
-            mult = 1 + ((i) // 100) * 0.01
+            mult = 1 + (min(i, 1000) // 100) * 0.01
             note.real_weight = note.weight * mult
+            
+    def weightArraySupport(self, supportLength, supportBoost):
+        skills = [note for note in self.skills]
+        skills.sort(key=lambda note: note.beat)
+        
+        returnNotes = []
+        skillNum = 0
+        
+        for note in self.playableNotes:
+            
+            note.support = 0
+            
+            if skillNum >= len(skills):
+                return
+            
+            if (note.time_offset >= skills[skillNum].time_offset) and (note.time_offset < skills[skillNum].time_offset + supportLength):
+                note.support = supportBoost
+                continue
+            
+            elif note.time_offset >= skills[skillNum].time_offset + supportLength:
+                skillNum += 1
                 
                 
     def defineNotes(self):
@@ -57,6 +81,7 @@ class Score():
         combinedNotes = defaultdict(list)
         
         for rawNote in self.notes:
+            
             if rawNote.note_description == 'Skill':
                 self.skills.append(rawNote)
                 
@@ -255,7 +280,7 @@ def findSongByName(song):
                 musicTitle = value
                 break
         
-        musicDict[musicTitle] = musicId
+        musicDict[musicTitle] = (musicId, music)
         
     maxFuzz = -1
         
@@ -267,13 +292,20 @@ def findSongByName(song):
             
     print(f"Best match for '{song}' is '{bestMatch}' with similarity {maxFuzz}%")
     
-    return musicDict[bestMatch]
+    return musicDict[bestMatch][0], musicDict[bestMatch][1]
       
 # if __name__ == "__main__":
     
 #     from glob import glob
+#     import os
+#     import pandas
     
-#     for fp in glob('charts/sus/*.sus'):
+#     songList = []
+    
+#     basicPath = 'charts/sus/*.sus'
+#     everythingPath = 'charts/sus/*expert.sus'
+    
+#     for fp in glob(basicPath):
 #         with open(fp, 'r') as f:
 #             content = f.readlines()
             
@@ -299,19 +331,29 @@ def findSongByName(song):
         
 #         for note in score.playableNotes:
 #             real_weight += note.real_weight
+            
+#         fp = os.path.basename(fp).replace('.sus', '').replace('chart_', '')
         
-#         print(fp, f"{score.metadata.score_level}, ", f"{real_weight / 100}")
-                    
+#         # print(os.path.basename(f"{fp}|{total_weight}|{real_weight / 100}"))
+#         songList.append([fp, total_weight, real_weight / 100, flick_notes, len(score.playableNotes)])
+        
+#     # songList = sorted(songList, key=lambda x: x[-1])
+    
+#     for song in songList:
+#         print(f"{song[0]}|{song[1]}|{song[2]}|{song[3]}|{song[4]}")
                     
 #     exit()
 
 if __name__ == "__main__":
     import shutil
     
-    song = 'BIBBIDIBA'
+    song = 'Supernova'
     diff = 'expert'
     
-    bestMatch = findSongByName(song)
+    bestMatch, music = findSongByName(song)
+    
+    print(f"Best match for '{song}' is '{bestMatch}'")
+    diffMult = int(music['data']['17'])
     
     beatmapPath = f'beatmaps/Resources/chart_{bestMatch}_{diff}.sus'
     
@@ -338,25 +380,20 @@ if __name__ == "__main__":
         ['time_offset', 'beat', 'weight', 'real_weight']
     ]
     
-    bp = 511253
-    
-    yInt = 0.5413
-    m = 0.004
+    bp = 198152
+    bonus = 0.497
     difficulty = 26
-    
-    estimatedWeight = m * difficulty + yInt 
-    estimatedWeight = estimatedWeight * (bp)
-    
-    print(estimatedWeight)
     
     with open('rawNotes.csv', 'w') as f:
         for note in score.notes:
             f.write(f"{note.line_number}, {note.line}, {note.note_class}, {note.note_type}, {note.measure}, {note.start_pos}, {note.width}, {float(note.beat)}, {note.note_description}\n")
     
     totalWeight = 0
+    baseWeight = 0
     
     for note in score.playableNotes:
         totalWeight += note.real_weight
+        baseWeight += note.weight
         # weightList.append(
         #     [str(note.time_offset), str(float(note.beat)), str(note.weight), str(note.real_weight)]
         # )
@@ -393,7 +430,7 @@ if __name__ == "__main__":
             normal_notes.append(note)
         
         weightList.append(
-            [str(note.time_offset), str(float(note.beat)), str(note.weight), str(note.real_weight), str(note.real_weight / totalWeight * estimatedWeight)]
+            [str(note.time_offset), str(float(note.beat)), str(note.weight), str(note.real_weight), str(note.real_weight / totalWeight)]
         )
         
     print(f'Normal Note Count: {len(normal_notes)}')
@@ -404,7 +441,20 @@ if __name__ == "__main__":
     print(f'Long Relay Note Count: {len(long_relay_notes)}')
     print(f'Long Continue Note Count: {len(long_continue_notes)}')
     print(f'Total Notes: {len(score.playableNotes)}')
-        
-    with open('output.csv', 'w') as f:
-        for row in weightList:
-            f.write(','.join(row) + '\n')
+    
+    print(f'Total Weight: {totalWeight / 100:.2f}')
+    print(f'Base Weight: {baseWeight / 100:.2f}')
+    
+    singleNote = 100 / baseWeight
+    difficultyMult = 1 + (difficulty - 5) * (diffMult / 1000)
+    
+    
+    print(f'Single Note Base Weight: {singleNote}')
+    print(f'Difficulty Multiplier: {difficultyMult:.3f}')
+    print(f'BP Multiplier: {bp:.2f}')
+    singleNote = singleNote * difficultyMult * bp * 2.3
+    
+    diff = 637 / singleNote
+    print(f'Difficulty: {diff}')
+    
+    print(f'Single Note Weight: {singleNote:.2f}')
