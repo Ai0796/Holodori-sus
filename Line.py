@@ -128,8 +128,6 @@ class Line():
     def parseBPM(self):
         bpm_value = float(self.data)
         bpm_number = int(self.label[3:], 36)  # Extract measure number from label
-        if self.label[3:] == '0a': print(f"Measure 10 BPM: {bpm_value}")
-        if bpm_number == 10: print(f"Measure 10 BPM: {bpm_value}")
         self.Score.BPMs[bpm_number] = bpm_value
             
     def parseNote(self):
