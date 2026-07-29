@@ -64,14 +64,24 @@ class Line():
         self.type = None
 
         self.read_line()
+        
+    def base62_to_int(self, s):
+        base62_chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        base62_dict = {char: index for index, char in enumerate(base62_chars)}
+        
+        result = 0
+        for char in s:
+            result = result * 62 + base62_dict[char]
+        
+        return result
 
     def expandData(self, data):
         expanded_data = ""
         idx = 0
         while idx < len(data):
             if data[idx:idx+2] == '0x':
-                # Grab the next two characters and convert base-36 to a decimal integer
-                count = int(data[idx+2:idx+4], 36)
+                # Grab the next two characters and convert base-62 to a decimal integer
+                count = self.base62_to_int(data[idx+2:idx+4])
                 expanded_data += '00' * count
                 idx += 4 # Skip past the 4-character "0xYY" block
             else:
@@ -95,6 +105,11 @@ class Line():
             self.label, self.data = match.groups()
             self.parseNote()
             
+        elif match := re.match(r'^#(BPM[0-9a-z]+):(.*)$', self.line):
+            self.type = 'bpm'
+            self.label, self.data = match.groups()
+            self.parseBPM()
+            
     def parseMeta(self):
         if not hasattr(self.Score, 'metadata'):
             self.Score.metadata = Metadata()
@@ -109,6 +124,13 @@ class Line():
             # I just have no clue what this does
             # all the meta attributes are underscored but this isn't
             pass
+        
+    def parseBPM(self):
+        bpm_value = float(self.data)
+        bpm_number = int(self.label[3:], 36)  # Extract measure number from label
+        if self.label[3:] == '0a': print(f"Measure 10 BPM: {bpm_value}")
+        if bpm_number == 10: print(f"Measure 10 BPM: {bpm_value}")
+        self.Score.BPMs[bpm_number] = bpm_value
             
     def parseNote(self):
         
@@ -116,18 +138,21 @@ class Line():
         note_class = self.label[3]
         start_pos = int(self.label[4], 16)
         long_note_id = None
-        
+
+        data = self.expandData(self.data)
+                
         if note_class == '0' and start_pos == 2:
+            
+            note = RawNote(measure, note_class, start_pos, long_note_id, 0, data[0], 0, self.line, self.line_number)
+            self.notes.append(note)
             ## #mmm02 long segment
             # The measure length after that measure number is specified by the count.
             # Decimal values can be specified. However, a value that is M / 2^n (M, n ∈ N) is preferable.
             return
-        
+
         if len(self.label) > 5:
             ## This will probably not go past 4, but just in case convert from hex
             long_note_id = int(self.label[5:], 16)
-            
-        data = self.expandData(self.data)
         
         for i in range(0, len(data), 2):
             if data[i: i+2] != '00':
