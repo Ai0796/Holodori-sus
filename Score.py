@@ -20,10 +20,16 @@ class Score():
         self.skills = []
         self.feverChance = []
         self.fever = []
+        self.measureLengths = []
+        self.BPMs = {}
+        self.bpmChanges = []
         
         self.playableNotes = []
+        self.combinedNotes = defaultdict(list)
         
         self.content = content
+        self.base_bpm = None
+        self.eight_note_duration = None
         
     def parse(self):
         
@@ -33,19 +39,43 @@ class Score():
             
             if line.type == 'note':
                 self.notes.extend(line.notes)
-                
-        self.notes.sort(key=lambda note: note.beat)
+        
+        self.base_bpm = Fraction(self.metadata.basebpm)
+        
+        self.addRealTime()
+        self.filterNotes()
         
     def addRealTime(self):
-        BPM = float(self.metadata.basebpm)
         measureLength = 4
+        currentBPM = self.base_bpm
         
-        for note in self.playableNotes:
-            beat = note.beat
-            note.time_offset = (beat * measureLength) / BPM * 60
+        allNotes = self.notes
+        allNotes.sort(key=lambda note: note.measure + note.offset)
+        
+        lastMeasure = 0
+        lastOffset = 0
+        lastBeat = 0
+        currentTime = 0
+        
+        for note in allNotes:
             
-        for skill in self.skills:
-            skill.time_offset = (skill.beat * measureLength) / BPM * 60
+            measureDiff = note.measure - lastMeasure
+            beatOffset = (note.offset - lastOffset + measureDiff) * measureLength
+            currentTime += (beatOffset * measureLength) / currentBPM * 60
+            
+            if note.note_description and note.note_description == 'BPM Change':
+                bpm_num = note.width
+                currentBPM = Fraction(self.BPMs[bpm_num])
+            
+            if note.note_description and note.note_description == 'Measure Length':
+                measureLength = note.note_type
+            
+            note.time_offset = currentTime
+            note.beat = lastBeat + beatOffset
+            
+            lastBeat = note.beat
+            lastMeasure = note.measure
+            lastOffset = note.offset
             
     def addCombo(self):
         self.playableNotes.sort(key=lambda note: note.beat)
@@ -75,13 +105,12 @@ class Score():
             elif note.time_offset >= skills[skillNum].time_offset + supportLength:
                 skillNum += 1
                 
-                
-    def defineNotes(self):
-        
-        combinedNotes = defaultdict(list)
-        
+    def filterNotes(self):
         for rawNote in self.notes:
             
+            if rawNote.note_description is None:
+                continue
+                    
             if rawNote.note_description == 'Skill':
                 self.skills.append(rawNote)
                 
@@ -92,18 +121,24 @@ class Score():
                 self.fever.append(rawNote)
                 
             elif rawNote.note_description == 'Measure Length':
-                self.metadata.measureLengths[rawNote.measure] = rawNote.offset
+                self.measureLengths.append(rawNote)
                 
-            elif rawNote.note_description is None:
+            elif rawNote.note_description == 'BPM Change':
+                self.bpmChanges.append(rawNote)
+                
+            elif 'ghost' in rawNote.note_description.lower():
                 pass
                 # print(f"Warning: Note at line {rawNote.line_number} has no description.")
+            
             else:    
                 ## when multiple notes overlap, they're combined into a single note with multiple types
                 time_position = (rawNote.beat, rawNote.start_pos, rawNote.width)
             
-                combinedNotes[time_position].append(rawNote)
-            
-        combinedNotes = dict(sorted(combinedNotes.items(), key=lambda item: item[0]))
+                self.combinedNotes[time_position].append(rawNote)
+                
+    def defineNotes(self):
+
+        combinedNotes = dict(sorted(self.combinedNotes.items(), key=lambda item: [float(item[0][0]), item[0][1], item[0][2]]))
             
         held_notes = {}
         for time_position, notes in combinedNotes.items():
@@ -113,6 +148,9 @@ class Score():
             long_note_ids = []
             
             for note in notes:
+                
+                time_offset = note.time_offset
+                
                 if note.note_description == 'Normal':
                     normal = True
                     
@@ -137,14 +175,14 @@ class Score():
                     
                 elif note.note_description == 'Invisible Relay Point':
                     relay_dummy = True
-                    long_note_ids.append(note.long_note_id)
+                    # long_note_ids.append(note.long_note_id)
                     
-                elif note.note_description == 'Flick Dummy':
-                    flick_dummy = True
+                elif note.note_description == 'Measure Length':
+                    currentMeasureLength = note.note_type
                     
             if long_start:
                 for long_note_id in long_note_ids:
-                    held_notes[long_note_id] = (beat, critical)
+                    held_notes[long_note_id] = (beat, critical, time_offset)
                     
                     ## Multiple long notes can start from the same position
                     self.playableNotes.append(
@@ -159,19 +197,20 @@ class Score():
                             long_start=long_start,
                             long_mid=False,
                             long_end=long_end,
-                            relay=relay,
-                            relay_dummy=relay_dummy,
-                            flick_dummy=flick_dummy
+                            relay=relay
                         )
                     )
                     
                 continue
                 
             elif long_end:
+                # print(f"Long end note at beat {beat} {float(beat)} with long_note_ids: {long_note_ids}")
                 for long_note_id in long_note_ids:
-                    start, critical = held_notes[long_note_id]
+                    start, critical, start_time_offset = held_notes[long_note_id]
                     
-                    current_long_note = Fraction(math.floor(start * 8) + 1, 8)
+                    current_long_note =  Fraction(math.floor(start * 2) + 1, 2)
+                    
+                    i = 0
                     
                     while current_long_note < beat:
                         self.playableNotes.append(
@@ -186,14 +225,13 @@ class Score():
                                 long_start=False,
                                 long_mid=True,
                                 long_end=False,
-                                relay=False,
-                                relay_dummy=False,
-                                flick_dummy=False
+                                relay=False
                             )
                         )
                         
-                        current_long_note += Fraction(1, 8)
-                        
+                        current_long_note += Fraction(1, 2)
+                        i += 1
+
                     ## Adds a playable note per long note end
                     self.playableNotes.append(
                         PlayableNote(
@@ -207,9 +245,7 @@ class Score():
                             long_start=long_start,
                             long_mid=False,
                             long_end=long_end,
-                            relay=relay,
-                            relay_dummy=relay_dummy,
-                            flick_dummy=flick_dummy
+                            relay=relay
                         )
                     )
                     
@@ -217,7 +253,7 @@ class Score():
                     
             elif relay:
                 for long_note_id in long_note_ids:
-                    _, critical = held_notes[long_note_id]
+                    _, critical, start_time_offset = held_notes[long_note_id]
                     
                     self.playableNotes.append(
                         PlayableNote(
@@ -231,14 +267,13 @@ class Score():
                             long_start=long_start,
                             long_mid=False,
                             long_end=long_end,
-                            relay=relay,
-                            relay_dummy=relay_dummy,
-                            flick_dummy=flick_dummy
+                            relay=relay
                         )
                     )
                     
                 continue
                 
+            ## relay_dummy is used to indicate a hold relay that isn't a note, it only changes the position of a hold
             elif relay_dummy:
                 if not relay:
                     continue
@@ -255,9 +290,7 @@ class Score():
                     long_start=long_start,
                     long_mid=False,
                     long_end=long_end,
-                    relay=relay,
-                    relay_dummy=relay_dummy,
-                    flick_dummy=flick_dummy
+                    relay=relay
                 )
             )
                       
@@ -302,7 +335,7 @@ def findSongByName(song):
     
 #     songList = []
     
-#     basicPath = 'charts/sus/*.sus'
+#     basicPath = 'beatmaps/Resources/*.sus'
 #     everythingPath = 'charts/sus/*expert.sus'
     
 #     for fp in glob(basicPath):
@@ -335,7 +368,7 @@ def findSongByName(song):
 #         fp = os.path.basename(fp).replace('.sus', '').replace('chart_', '')
         
 #         # print(os.path.basename(f"{fp}|{total_weight}|{real_weight / 100}"))
-#         songList.append([fp, total_weight, real_weight / 100, flick_notes, len(score.playableNotes)])
+#         songList.append([fp, total_weight, real_weight / 100, flick_notes, max(score.playableNotes, key=lambda note: note.time_offset).time_offset])
         
 #     # songList = sorted(songList, key=lambda x: x[-1])
     
@@ -347,13 +380,17 @@ def findSongByName(song):
 if __name__ == "__main__":
     import shutil
     
-    song = 'Supernova'
+    song = 'rirubi'
     diff = 'expert'
     
     bestMatch, music = findSongByName(song)
     
     print(f"Best match for '{song}' is '{bestMatch}'")
-    diffMult = int(music['data']['17'])
+    diffMult = music['data']['17']
+    try:
+        diffMult = int(diffMult)
+    except:
+        diffMult = 0
     
     beatmapPath = f'beatmaps/Resources/chart_{bestMatch}_{diff}.sus'
     
@@ -365,8 +402,6 @@ if __name__ == "__main__":
     score = Score(content)
     score.parse()
     score.defineNotes()
-    score.addRealTime()
-    score.addCombo()
     score.playableNotes.sort(key=lambda note: note.beat)
     
     # for i, note in enumerate(score.playableNotes):
@@ -375,6 +410,7 @@ if __name__ == "__main__":
     print(len(score.lines))
     print(len(score.playableNotes))
     print(score.metadata)
+    print(score.BPMs, score.bpmChanges)
     
     weightList = [
         ['time_offset', 'beat', 'weight', 'real_weight']
@@ -385,8 +421,14 @@ if __name__ == "__main__":
     difficulty = 26
     
     with open('rawNotes.csv', 'w') as f:
+        f.write('line_number, line, note_class, note_type, measure, beat, start_pos, width, beat_float, note_description\n')
         for note in score.notes:
-            f.write(f"{note.line_number}, {note.line}, {note.note_class}, {note.note_type}, {note.measure}, {note.start_pos}, {note.width}, {float(note.beat)}, {note.note_description}\n")
+            f.write(f"{note.line_number}, {note.line}, {note.note_class}, {note.note_type}, {note.measure}, {float(note.beat)}, {note.start_pos}, {note.width}, {float(note.beat)}, {note.note_description}\n")
+    
+    with open('playableNotes.csv', 'w') as f:
+        for note in score.playableNotes:
+            f.write(f"{note.measure}, {note.start_pos}, {note.width}, {float(note.beat)}, {note.normal}, {note.critical}, {note.flick}, {note.long_start}, {note.long_mid}, {note.long_end}, {note.relay}, {note.weight}, {note.real_weight}\n")
+        
     
     totalWeight = 0
     baseWeight = 0
@@ -442,8 +484,8 @@ if __name__ == "__main__":
     print(f'Long Continue Note Count: {len(long_continue_notes)}')
     print(f'Total Notes: {len(score.playableNotes)}')
     
-    print(f'Total Weight: {totalWeight / 100:.2f}')
-    print(f'Base Weight: {baseWeight / 100:.2f}')
+    print(f'Total Weight: {totalWeight / 1000:.2f}')
+    print(f'Base Weight: {baseWeight / 1000:.2f}')
     
     singleNote = 100 / baseWeight
     difficultyMult = 1 + (difficulty - 5) * (diffMult / 1000)
