@@ -42,6 +42,7 @@ class Score():
         self.filterNotes()
         self.defineNotes()
         self.addTimePlayableNotes()
+        self.addCombo()
         
     def parseRealTime(self):
         measureLength = 4
