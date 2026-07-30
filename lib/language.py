@@ -19,6 +19,7 @@ class Lang():
             self._files[assetName] = str(fp)
     
     def __getattr__(self, name):
+        
         if name in self._files:
             fp = self._files[name]
             
