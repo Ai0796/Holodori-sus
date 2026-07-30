@@ -3,6 +3,7 @@ from glob import glob
 import os
 import json
 import re
+import traceback
 
 masterPath = 'master_data/json/'
 DIFFICULTIES = ['Easy', 'Normal', 'Hard', 'Expert']
@@ -17,7 +18,7 @@ class Lang():
     
     def __init__(self, language='Eng'):
         self.language = language
-        self.langPath = f'master_data/lang/Lang*{language}.json'
+        self.langPath = f'master_data/json/Lang*{language}.json'
         
         for fp in glob(self.langPath):
             
@@ -52,6 +53,7 @@ def getMusicDifficulty(assetId, difficulty):
 if __name__ == "__main__":
     
     songList = []
+    failedList = []
     
     basicPath = 'beatmaps/Resources/*.sus'
     
@@ -69,8 +71,6 @@ if __name__ == "__main__":
             score = Score(content)
             score.parse()
             score.defineNotes()
-            score.addRealTime()
-            score.addCombo()
 
             normal_notes = float(score.metadata.normal_note_count) * 1000
             flick_notes = float(score.metadata.flick_note_count) * 1050
@@ -97,6 +97,10 @@ if __name__ == "__main__":
             chart['titleLangId'] = music['titleLangId']
             chart['title'] = langData.Music.get(music['titleLangId'], music['titleLangId'])
             chart['liveScoreCoefficientPermil'] = music['liveScoreCoefficientPermil']
+            chart['playingSeconds'] = music['playingSeconds']
+            chart['beatmapSeconds'] = max(score.playableNotes, key=lambda note: note.time_offset).time_offset
+            chart['chorusStartMillisecond'] = music['chorusStartMillisecond']
+            chart['chorusEndMillisecond'] = music['chorusEndMillisecond']
             chart['difficulty'] = diff
             chart['difficultyLevel'] = musicDiff['difficultyLevel']
             chart['normalNoteCount'] = int(score.metadata.normal_note_count)
@@ -109,30 +113,52 @@ if __name__ == "__main__":
             chart['base_weight'] = int(total_weight)
             chart['combo_weight'] = int(real_weight)
             
+            fever_chance = sorted([note.time_offset for note in score.feverChance])
+            fever_chance_start = fever_chance[0] if fever_chance else None
+            fever_chance_end = fever_chance[1] if fever_chance else None
+            
+            fever = sorted([note.time_offset for note in score.fever])
+            fever_start = fever[0] if fever else None
+            fever_end = fever[1] if len(fever) > 1 else 0
+            
+            chart['feverChanceStart'] = float(fever_chance_start)
+            chart['feverChanceEnd'] = float(fever_chance_end)
+            
+            chart['feverStart'] = float(fever_start)
+            chart['feverEnd'] = float(fever_end)
+            
             chart['supportSkills'] = []
             chart['notes'] = []
             
             if base_weight_calc != total_weight:
                 print(f"Warning: Base weight calculation mismatch for {fp}. Calculated: {base_weight_calc}, Total: {total_weight}")
+                failedList.append([fp, base_weight_calc, total_weight])
                 continue
             
             for skill in score.skills:
-                chart['supportSkills'].append(skill.time_offset)
+                chart['supportSkills'].append(float(skill.time_offset))
             
             for note in score.playableNotes:
                 chart['notes'].append(
-                    [note.time_offset, int(note.real_weight)]
+                    [float(note.time_offset), int(note.real_weight)]
                 )
                 
             songList.append(chart)
             
         except:
             print(f"Error processing file: {fp}")
+            traceback.print_exc()
+            break
             continue
     # songList = sorted(songList, key=lambda x: x[-1])
     
     print(f'Processed {len(songList)} charts.')
+    print(f'Failed to process {len(failedList)} charts.')
     print(f'Total charts: {len(list(glob(basicPath)))}')
+    
+    with open('failed_charts.txt', 'w') as f:
+        for item in failedList:
+            f.write(f"{item[0]} - Calculated: {item[1]}, Total: {item[2]}\n")
     
     with open('music_meta.json', 'w') as f:
         json.dump(songList, f, indent=4)
