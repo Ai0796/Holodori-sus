@@ -1,6 +1,6 @@
 class PlayableNote():
     def __init__(self, measure, start_pos, width, beat,
-                 normal, critical, flick, long_start, long_end, long_mid, relay, relay_dummy, flick_dummy):
+                 normal, critical, flick, long_start, long_end, long_mid, relay):
         self.measure = measure
         self.start_pos = start_pos
         self.width = width
@@ -13,8 +13,6 @@ class PlayableNote():
         self.long_end = long_end
         self.long_mid = long_mid
         self.relay = relay
-        self.relay_dummy = relay_dummy
-        self.flick_dummy = flick_dummy
         
         self.weight = -1
         self.time_offset = -1
