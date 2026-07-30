@@ -141,7 +141,7 @@ class Line():
                 
         if note_class == '0' and start_pos == 2:
             
-            note = RawNote(measure, note_class, start_pos, long_note_id, 0, data[0], 0, self.line, self.line_number)
+            note = RawNote(measure, note_class, start_pos, long_note_id, 0, data, 0, self.line, self.line_number)
             self.notes.append(note)
             ## #mmm02 long segment
             # The measure length after that measure number is specified by the count.
