@@ -1,5 +1,6 @@
+import random
+
 from Card.Card import Card
-from Card.Skill import Skill
 from Score import Score, findSongByName
 
 from glob import glob
@@ -13,87 +14,50 @@ from tqdm import tqdm
 import math
 import shutil
 from collections import defaultdict
+import pandas as pd
+import scipy.stats as stats
 
-def recursiveSearch(json_obj, target_key, addDict):
-    if type(json_obj) is list:
-        for item in json_obj:
-            recursiveSearch(item, target_key, addDict)
-            
-    elif type(json_obj) is dict:
-        for key, value in json_obj.items():
-            if key == target_key:
-                title = value['1'].replace('la-generated-', '').replace('.1-description', '')
-                try:
-                    sub = value.get('1000', None)
-                    
-                    if title == 'live_passive_skill-card-00001-4-cmmn-0000-00':
-                        print(f"Found special case for title: {title}, sub: {sub}")
-                    addDict[title] = re.sub(r"\[/?.+\]", "", sub) if sub else None
-                except Exception as e:
-                    pass
-                    # print(f"Error processing title: {title}, sub: {sub}, error: {e}")
-            else:
-                recursiveSearch(value, target_key, addDict)
+from lib.language import Lang
+from lib.master_data import MasterData
 
-translationPath = 'master_data/lang/LangCard_Eng.json'
-
-langSubDict = {}
-
-with open(translationPath, 'r', encoding='utf-8') as f:
-    json_data = json.load(f)
-    
-    recursiveSearch(json_data['Lang'], 'data', langSubDict)
-    
-characterPath = 'master_data/json/Character.json'
-
-characterDict = {}
-
-lockedChar = 'card-00039-5-uniq-0032-00' ## There will always be a required card on the team
+lockedChar = 'card-00006-5-uniq-0007-00' ## There will always be a required card on the team
 
 supportSkill = {
     'Length': 10,
     'Boost': 1.45
 }
-
-with open(characterPath, 'r', encoding='utf-8') as f:
-    character_data = json.load(f)
-    for character in character_data:
-        characterDict[character['id']] = character['nameEng']
-
-master_data_path = 'master_data/json'
-
-cardData = os.path.join(master_data_path, 'Card.json')
-with open(cardData, 'r', encoding='utf-8') as f:
-    cards = json.load(f)
     
 cardObjects = []
 
 lockedCardObj = None
+
+LangObj = Lang()
+MasterDataObj = MasterData()
+
+filtered = []
     
-for card in cards:
-    card_obj = Card()
+for card in MasterDataObj.Card:
+    card_obj = Card(MasterDataObj, LangObj)
     card_obj.initByDict(card)
-    card_obj.card_name = langSubDict.get(card['nameLangId'], None)
-    card_obj.character_name = characterDict.get(card['characterId'], None)
-    # print(f"Card ID: {card_obj.card_id}, Rarity: {card_obj.card_rarity}, Type: {card_obj.card_type}")
-    
-    # if card_obj.active_skill:
-    #     print(card_obj.active_skill)
     
     if card_obj.card_rarity != 'CARD_RARITY_RARITY_5':
         continue
     
     if card_obj.card_id == lockedChar:
         lockedCardObj = card_obj
-        print(f"Locked card found: {lockedCardObj.character_name} ({lockedCardObj.card_name})")
+        # print(f"Locked card found: {lockedCardObj.character_name} ({lockedCardObj.card_name})")
         continue
         
+    print(f"Loaded card: {card_obj.character_name} ({card_obj.card_name})")
+    print(f"  Active Skill: {card_obj.active_skill}")
     cardObjects.append(card_obj)
+    
+# exit()
         
-song = 'iroha step'
+song = 'god knows'
 diff = 'expert'
 
-bestMatch = findSongByName(song)
+bestMatch = findSongByName(song)[0]
 beatmapPath = f'beatmaps/Resources/chart_{bestMatch}_{diff}.sus'
 
 shutil.copy(beatmapPath, f'selected/chart_{song}_{diff}.sus')
@@ -109,15 +73,19 @@ score.addCombo()
 score.weightArraySupport(supportSkill['Length'], supportSkill['Boost'])
 score.playableNotes.sort(key=lambda note: note.beat)
 
-filtered = []
+totalWeight = 0
+
+for note in score.playableNotes:
+    totalWeight += note.real_weight
 
 skillSet = set()
 skillMap = defaultdict(list)
 
+characters = []
+
 for card in cardObjects:
     
     if str(card.active_skill) in skillSet:
-        # print(f"Duplicate skill found: {card.active_skill} for card {card.character_name} ({card.card_name})")
         skillMap[str(card.active_skill)].append(card)
         continue
     
@@ -172,10 +140,8 @@ for note in score.playableNotes:
         currentSecond += 1
         
     perSecondWeights[second] += note.real_weight
-    
-print(perSecondWeights)
 
-secondColormap = plt.get_cmap('copper')
+secondColormap = plt.get_cmap('viridis')
 
 minVal = 0
 maxVal = max(perSecondWeights)
@@ -185,6 +151,8 @@ import matplotlib.cm as cm
 
 # Setup layout and color scheme
 fig, ax = plt.subplots(figsize=(12, 6))
+
+fig.colorbar(cm.ScalarMappable(cmap=secondColormap), ax=ax, orientation='vertical', label='Expected Weight Intensity')
 
 # Distinct palette for the 5 skill rows
 card_colors = plt.cm.Set2.colors  # 8 soft distinct colors
@@ -216,8 +184,6 @@ supportSkills = []
 for skill in score.skills:
     offset = skill.time_offset
     supportSkills.append((offset, supportSkill['Length']))
-    
-ax.broken_barh(supportSkills, (5.1, 0.7), facecolors='lightgray', edgecolor='none', alpha=0.5)
 
 for i, card in enumerate(bestCombo, start=0):
     bars = []
@@ -226,7 +192,7 @@ for i, card in enumerate(bestCombo, start=0):
     
     # Calculate proc intervals
     # (Note: adjust range step logic if skill activates right at t=0 or requires trigger condition)
-    for start in range(cooldown, len(perSecondWeights), cooldown + duration):
+    for start in range(cooldown, len(perSecondWeights), cooldown):
         bars.append((start, duration))
     
     card_color = card_colors[i % len(card_colors)]
@@ -234,10 +200,16 @@ for i, card in enumerate(bestCombo, start=0):
     # Draw skill lane at y-index i (Y = 0 to 4)
     # Height is set to 0.7 with y offset i + 0.15 for clean padding/gaps
     ax.broken_barh(bars, (i + 0.15, 0.7), facecolors=card_color, edgecolor='none', alpha=0.85)
+    ax.broken_barh(bars, (6.1, 0.3), facecolors=card_color, edgecolor='none', alpha=1)
+    
+    card_label = f'{card.character_name} ({card.card_name})'
     
     # Use card name or fallback identifier for label
-    card_label = getattr(card, 'name', f"Card {i+1}")
+    # card_label = getattr(card, 'name', f"Card {i+1}")
     yticklabels.append(card_label)
+    
+ax.broken_barh(supportSkills, (5.1, 0.7), facecolors='lightgray', edgecolor='none', alpha=0.5)
+ax.broken_barh(supportSkills, (6.1, 0.2), facecolors='lightgray', edgecolor='none', alpha=0.7)
 
 # Append top bar label
 yticklabels.append("Support Skill Window")
@@ -259,8 +231,84 @@ ax.set_xlabel("Time (seconds)", fontsize=11)
 ax.set_xlim(0, len(perSecondWeights))
 ax.set_ylim(0, len(bestCombo) + 2.4)
 
+def calculateVariance(arr, totalWeight):
+    E = 0
+    var = 0
+    remainingProb = 1.0
+    
+    for skill in arr:
+        if skill == 0: continue ## 0 is skipped
+        
+        skill[0] = skill[0] / totalWeight if totalWeight > 0 else 0
+        
+        prob = skill[1] * remainingProb
+        remainingProb *= (1 - skill[1])
+        
+        E += skill[0] * prob
+        var += ((skill[0] * prob) ** 2) * (prob * (1 - prob))
+        
+    return E, var
+
+bestCombo = sorted(bestCombo, key=lambda card: card.active_skill.getMult(), reverse=True)
+
+allProcced = [card.active_skill.applyToChartProbability(score.playableNotes) for card in bestCombo]
+
+expected = 0
+variance = 0
+
+for i in range(len(allProcced[0])):
+    skills = [allProcced[j][i] for j in range(len(allProcced))]
+    E, var = calculateVariance(skills, totalWeight)
+    
+    expected += E
+    variance += var
+    
+x = np.linspace(expected - 6 * math.sqrt(variance), expected + 6 * math.sqrt(variance), 1000)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+random_samples = 1000
+
+outputs = []
+
+arr = np.maximum.reduce([card.active_skill.applyToChart(score.playableNotes) for card in bestCombo])
+
+print(f"Max Weight: {np.sum(arr):.2f} / Total Weight: {totalWeight:.2f} ({np.sum(arr) / totalWeight:.2%})")
+maxWeight = np.sum(arr) / totalWeight
+# outputs.append(np.sum(arr) / totalWeight)
+
+random.seed(32)
+for sample in tqdm(range(random_samples)):
+    arr = []
+    ## different random seed for each card to simulate independent skill activations
+    for card in bestCombo:
+        seed = random.randint(0, 2**32 - 1)
+        arr.append(card.active_skill.applyToChartRandom(score.playableNotes, random_state=seed))
+        
+    arr = np.maximum.reduce(arr)
+    total = np.sum(arr)
+    
+    outputs.append(total / totalWeight)
+    
+outputs = sorted(outputs)
+
+print("Highest output:", max(outputs))
+for output in outputs:
+    if output >= maxWeight:
+        print(f"Random simulation reached max weight: {output:.9f}")
+    
+ax.hist(outputs, bins=300, color='skyblue', edgecolor='black', alpha=0.7)
+ax.plot(x, stats.norm.pdf(x, loc=expected, scale=math.sqrt(variance)), color='red', linewidth=2, label='Normal Distribution Fit')
+ax.legend()
+ax.set_title(f"Distribution of Total Weight Proportion over {random_samples} Random Simulations", fontsize=14, pad=12)
+ax.set_xlabel("Proportion of Total Weight (compared to song base combo weight)", fontsize=11)
+ax.set_ylabel("Percentage", fontsize=11)
+
+ax.set_yticklabels([f"{int(y / random_samples * 100)}%" for y in ax.get_yticks()])
+
 plt.tight_layout()
 plt.show()
+        
+
 # print(f"Total combinations of 5 cards: {len(combinations)}")
 
 # selectedCard = cardObjects[32]
