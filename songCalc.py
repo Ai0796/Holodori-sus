@@ -4,42 +4,120 @@ import itertools
 
 def main():
     
-    power = 188222
+    power = 201046
     multiplier = 1.06
     
     supportSkill = SupportSkill(multiplier=1.1, duration=11)
-    
+
     activeSkills = [
+        ActiveSkill(1.0, 10, 29, 0.55),
+        ActiveSkill(0.9, 6, 15, 0.55),
+        ActiveSkill(1.1, 9, 27, 0.55),
         ActiveSkill(0.9, 11, 30, 0.55),
-        ActiveSkill(1.1, 9, 27, 0.46),
-        ActiveSkill(1.0, 7, 19, 0.46),
-        ActiveSkill(0.9, 6, 15, 0.46),
         ActiveSkill(0.55, 10, 24, 0.55)
     ]
     
     with open('music_meta.json', 'r') as f:
         musicMeta = json.load(f)
         
-    song = searchMusicMeta(musicMeta, "Supernova", "expert")
-    
-    bestPermutation = None
-    bestScore = 0
-    
-    for permutation in itertools.permutations(activeSkills):
-    
-        baseNote, maxScore = calcScore(song, power, supportSkill, permutation)
+    for diff in ['easy', 'normal', 'hard', 'expert']:
+        song = searchMusicMeta(musicMeta, "Wicked feat. Mori Calliope", diff)
+        # print(f"Calculating best permutation for song: {song['title']} ({diff})")
         
-        if maxScore > bestScore:
-            bestScore = maxScore
-            bestPermutation = permutation
+        bestPermutation = None
+        bestScore = 0
+        
+        for permutation in itertools.permutations(activeSkills):
+        
+            baseNote, maxScore = calcScore(song, power, supportSkill, permutation)
             
-            print(f"New best score: {bestScore:.2f} with permutation: {[str(skill) for skill in bestPermutation]}")
+            if maxScore > bestScore:
+                bestScore = maxScore
+                bestPermutation = permutation
+                
+                # print(f"New best score: {bestScore:.2f} with permutation: {[str(skill) for skill in bestPermutation]}")
+                
+        print(f"Best permutation for {diff}:")
+        print(f"Max Score: {bestScore:.2f}")
+        print(f'Base Note: {baseNote:.2f}')
+        for skill in bestPermutation:
+            print(skill)
             
-    print(f"Best permutation:")
-    print(f"Max Score: {bestScore:.2f}")
-    for skill in bestPermutation:
-        print(skill)
+    graphScore(song, power, supportSkill, bestPermutation)
+
+def graphScore(song, power, supportSkill, activeSkills):
     
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    
+    plt.style.use('dark_background')
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colormap = plt.get_cmap('viridis')
+    
+    fig.colorbar(cm.ScalarMappable(cmap=colormap), ax=ax, label='Weight Multiplier')
+    
+    card_colors = plt.cm.Set2.colors
+    
+    perSecondWeights = [0]
+    
+    currentSecond = 0
+    secondWeight = 0
+    
+    for note in song['notes']:
+        second = int(note[0])
+        
+        while second != currentSecond:
+            perSecondWeights.append(0)
+            currentSecond += 1
+            
+        perSecondWeights[second] += note[1]
+        
+    heatmapBars = []
+    heatmapColors = []
+    
+    minVal = min(perSecondWeights) if perSecondWeights else 0
+    maxVal = max(perSecondWeights) if perSecondWeights else 1
+
+    for second, weight in enumerate(perSecondWeights):
+        norm_val = (weight - minVal) / (maxVal - minVal) if maxVal > minVal else 0
+        color = colormap(norm_val)
+        
+        heatmapBars.append((second, 1))
+        heatmapColors.append(color)
+        
+    ax.broken_barh(heatmapBars, (7.5, 1), facecolors=heatmapColors, alpha=0.8, label='Expected Weight per Second')
+        
+    for i, skill in enumerate(activeSkills[::-1]): ## start with last first because we want the first skill to overwrite
+        bars = []
+        for start in range(skill.cooldown, len(perSecondWeights), skill.cooldown):
+            bars.append((start, skill.duration))
+            
+        card_color = card_colors[activeSkills.index(skill) % len(card_colors)]
+        
+        ax.broken_barh(bars, (i + 0.5, 0.7), facecolors=card_color, alpha=1.0, label=str(skill))
+        ax.broken_barh(bars, (7.5, 0.6), facecolors=card_color, alpha=1.0, label='Skill Overlap')
+        
+    bars = []
+    for support in song['supportSkills']:
+        bars.append((support, supportSkill.duration))
+            
+    ax.broken_barh(bars, (7.5, 0.3), facecolors='lightgray', alpha=0.7, label='Support Skill')
+        
+    ax.grid(True, axis='x', linestyle='--', alpha=0.5)
+    
+    tickMarks = ['', 'Skill 5', 'Skill 4', 'Skill 3', 'Skill 2', 'Skill 1', 'Skill Overlap', 'Support Skill', 'Weight Heatmap']
+    ax.set_yticks(range(len(tickMarks)))
+    ax.set_yticklabels(tickMarks)
+    
+    ax.set_xlabel('Time (seconds)')
+    ax.set_ylabel('Skill / Weight')
+    ax.set_title(f"Skill Proc Windows and Expected Weight for '{song['title']}'")
+    ax.set_xlim(0, len(perSecondWeights) + 1)
+    ax.set_ylim(0, len(tickMarks))
+    
+    plt.show()
+
 def calcScore(song, power, supportSkills, activeSkills):
     generateSupportWeights(supportSkills, song['notes'], song['supportSkills'])
     
