@@ -5,6 +5,7 @@ import numpy as np
 
 from lib.master_data import MasterData
 from lib.language import Lang
+import random
 
 class ActiveSkill():
     
@@ -19,7 +20,8 @@ class ActiveSkill():
         self.duration = None
         self.description = None
         
-        self.note_weights = None
+        self.noteWeights = None
+        self.skillProcs = None
         
         self.master_data = master_data
         self.lang = lang
@@ -28,7 +30,7 @@ class ActiveSkill():
         skills = self.master_data.LiveActiveSkillLevel
             
         for skill in skills:
-            if skill['liveActiveSkillId'] == skill_id and skill['level'] == 1:
+            if skill['liveActiveSkillId'] == skill_id and skill['level'] == 2:
                 self.initByDict(skill)
                 break
     
@@ -67,8 +69,8 @@ class ActiveSkill():
     
     def applyToChart(self, playableNotes):
         
-        if self.note_weights is not None:
-            return self.note_weights
+        if self.noteWeights is not None:
+            return self.noteWeights
         
         mult = self.getMult()
         cooldown = self.getCooldown()
@@ -92,8 +94,8 @@ class ActiveSkill():
                 continue
                 
             elif note.time_offset > skillEnd:
-                skillStart += cooldown + duration
-                skillEnd += cooldown + duration
+                skillStart += cooldown
+                skillEnd += cooldown
             
             self.noteWeights.append(0)
             self.expectedWeights.append(0)
@@ -102,6 +104,106 @@ class ActiveSkill():
         self.noteWeights = np.array(self.noteWeights)
         self.expectedWeights = np.array(self.expectedWeights)
         return self.noteWeights
+    
+    def getSkillProcs(self, playableNotes):
+        
+        if self.skillProcs is not None:
+            return self.skillProcs
+        
+        mult = self.getMult()
+        cooldown = self.getCooldown()
+        duration = self.getDuration()
+        
+        self.skillProcs = []
+        
+        idx = 0
+        skillStart = cooldown
+        skillEnd = cooldown + duration
+        
+        skillProc = 1
+        
+        while idx < len(playableNotes):
+            note = playableNotes[idx]
+            
+            if (note.time_offset >= skillStart and note.time_offset <= skillEnd):
+                self.skillProcs.append((skillProc, note.real_weight * mult))
+
+                idx += 1
+                continue
+                
+            elif note.time_offset > skillEnd:
+                skillProc += 1
+                skillStart += cooldown
+                skillEnd += cooldown
+            
+            self.skillProcs.append((0, 0))
+            
+            idx += 1
+        
+        self.skillProcs = np.array(self.skillProcs)
+
+        return self.skillProcs
+    
+    def applyToChartRandom(self, playableNotes, random_state=None):
+        if random_state is not None:
+            random.seed(random_state)
+            
+        probability = self.getProbability()
+        skillProcs = self.getSkillProcs(playableNotes)
+        
+        if len(skillProcs) == 0:
+            return np.zeros(0, dtype=bool)
+
+        # Get the total number of skill activation windows (cast max to int)
+        total_skills = int(np.max(skillProcs[:, 0]))
+        
+        if total_skills == 0:
+            return np.zeros(len(playableNotes), dtype=bool)
+
+        # Roll proc chance independently for each skill window (1 to total_skills)
+        # procced_skill_ids will be a set of skill IDs (e.g. {1, 3}) that successfully activated
+        procced_skill_ids = {
+            s_id for s_id in range(1, total_skills + 1) 
+            if random.random() < probability
+        }
+        
+        # Generate a boolean array matching playableNotes length:
+        # True if the note's skill ID is in our set of procced skills
+        procd_mask = np.isin(skillProcs[:, 0], list(procced_skill_ids))
+        
+        return np.where(procd_mask, skillProcs[:, 1], 0)
+    
+    def applyToChartProbability(self, playableNotes):
+        
+        mult = self.getMult()
+        cooldown = self.getCooldown()
+        duration = self.getDuration()
+        probability = self.getProbability()
+        
+        noteWeights = []
+        
+        idx = 0
+        skillStart = cooldown
+        skillEnd = cooldown + duration
+        
+        while idx < len(playableNotes):
+            note = playableNotes[idx]
+            
+            if (note.time_offset >= skillStart and note.time_offset <= skillEnd):
+                noteWeights.append([note.real_weight * mult, probability])
+
+                idx += 1
+                continue
+                
+            elif note.time_offset > skillEnd:
+                skillStart += cooldown
+                skillEnd += cooldown
+            
+            noteWeights.append(0)
+            
+            idx += 1
+
+        return noteWeights
         
     def getCooldown(self):
         return float(self.cooldown / 1000.0)
@@ -114,9 +216,11 @@ class ActiveSkill():
     
     def __str__(self):
         
-        mult = self.getMult()
-        cooldown = self.getCooldown()
-        duration = self.getDuration()
-        probability = self.getProbability()
+        # mult = self.getMult()
+        # cooldown = self.getCooldown()
+        # duration = self.getDuration()
+        # probability = self.getProbability()
         
-        return f'{mult:.2f}x for {duration:.2f}s with {probability:.2%} chance and {cooldown:.2f}s cooldown'
+        # return f'{mult:.2f}x for {duration:.2f}s with {probability:.2%} chance and {cooldown:.2f}s cooldown'
+        
+        return self.description

@@ -1,5 +1,6 @@
 from Card.ActiveSkill import ActiveSkill
 from Card.PassiveSkill import PassiveSkill
+from Card.SpecialSkill import SpecialSkill
 import json
 from lib.master_data import MasterData
 from lib.language import Lang
@@ -21,7 +22,7 @@ class Card():
         self.card_rarity = card_object.get('rarity', None)
         self.card_type = card_object.get('attributeType', None)
         
-        self.name = self.lang.Card.get(card_object['nameLangId'], None)
+        self.card_name = self.lang.Card.get(card_object['nameLangId'], None)
         
         self.character_name = self.master_data.getKeyById('Character', 'nameEng', card_object['characterId'])
         
@@ -37,7 +38,9 @@ class Card():
             self.passive_skill = PassiveSkill(self.master_data, self.lang)
             self.passive_skill.initByName(card_object['livePassiveSkillId'])
             
-            print(f"Loaded passive skill: {self.passive_skill} for card {self.character_name} ({self.card_name})")
+        if 'liveSpecialSkillId' in card_object:
+            self.special_skill = SpecialSkill(self.master_data, self.lang)
+            self.special_skill.initByName(card_object['liveSpecialSkillId'])
             
     def initById(self, card_id):
         cards = self.master_data.Card

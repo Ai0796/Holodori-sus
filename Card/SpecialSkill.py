@@ -1,7 +1,12 @@
+import re
+
+import json
+import numpy as np
+
 from lib.master_data import MasterData
 from lib.language import Lang
 
-class PassiveSkill():
+class SpecialSkill():
     
     def __init__(self, master_data: MasterData, lang: Lang):
         self.skill_id = None
@@ -14,35 +19,27 @@ class PassiveSkill():
         self.duration = None
         self.description = None
         
-        self.note_weights = None
+        self.noteWeights = None
         
         self.master_data = master_data
         self.lang = lang
         
     def initByName(self, skill_id):
-        skills = self.master_data.LivePassiveSkillLevel
+        skills = self.master_data.LiveSpecialSkillLevel
             
         for skill in skills:
-            if skill['livePassiveSkillId'] == skill_id and skill['level'] == 2:                
+            if skill['liveSpecialSkillId'] == skill_id and skill['level'] == 2:
                 self.initByDict(skill)
                 break
     
     def initByDict(self, skill_object: dict):
-        self.skill_id = skill_object.get('livePassiveSkillId', None)
+        self.skill_id = skill_object.get('liveSpecialSkillId', None)
         self.level = skill_object.get('level', None)
-        self.skill_effect_id = skill_object.get('livePassiveSkillEffectGroupId', None)
-        self.descriptionAsset = skill_object.get('descriptionLangId', None)
-        self.description = self.lang.LivePassiveSkillLevel.get(self.descriptionAsset, None)
-        
-        self.skill_effect = self.master_data.getEntity('LivePassiveSkillEffect', self.skill_effect_id, 'groupId')
-        
-        self.skill_effect_number = self.skill_effect.get('number', None)
-        self.skill_effect_type = self.skill_effect.get('type', None)
-        self.skill_effect_value = self.skill_effect.get('value', None)
-        self.skill_effect_target_id = self.skill_effect.get('liveSkillEffectTargetId', None)
-        self.skill_effect_description_id = self.skill_effect.get('descriptionLangId', None)
-        
-        self.skill_effect_description = self.lang.LivePassiveSkillEffect.get(self.skill_effect_description_id, None)
+        self.skill_effect = skill_object.get('liveSpecialSkillEffectGroupId', None)
+        self.additional_skill = skill_object.get('additionalLiveSpecialSkillEffectGroupId', None)
+
+        self.descriptionId = skill_object.get('descriptionLangId', None)
+        self.description = self.lang.LiveSpecialSkillLevel.get(self.descriptionId, None)
     
     def initByData(self, skill_id, level, skill_effect, additional_skill_condition, additional_skill_effect, cooldown, activation_chance, duration, description):
         self.skill_id = skill_id
@@ -57,4 +54,4 @@ class PassiveSkill():
     
     def __str__(self):
         
-        return f"Passive Skill: {self.description} ({self.skill_effect_description} - {self.skill_effect_value})"
+        return self.description
