@@ -1,19 +1,9 @@
-from flask import json
-
 from Line import Line
 from dataClasses.Metadata import Metadata
 from collections import defaultdict
 from fractions import Fraction
 import math
 from notes.PlayableNote import PlayableNote
-from slugify import slugify
-from rapidfuzz import fuzz, process
-
-from lib.master_data import MasterData
-from lib.language import Lang
-
-masterdata = MasterData()
-lang = Lang()
 
 class Score():
     
@@ -48,10 +38,12 @@ class Score():
         
         self.base_bpm = Fraction(self.metadata.basebpm)
         
-        self.addRealTime()
+        self.parseRealTime()
         self.filterNotes()
+        self.defineNotes()
+        self.addTimePlayableNotes()
         
-    def addRealTime(self):
+    def parseRealTime(self):
         measureLength = 4
         currentBPM = self.base_bpm
         
@@ -67,7 +59,7 @@ class Score():
             
             measureDiff = note.measure - lastMeasure
             beatOffset = (note.offset - lastOffset + measureDiff) * measureLength
-            currentTime += (beatOffset * measureLength) / currentBPM * 60
+            currentTime += (beatOffset) / currentBPM * 60
             
             if note.note_description and note.note_description == 'BPM Change':
                 bpm_num = note.width
@@ -82,6 +74,30 @@ class Score():
             lastBeat = note.beat
             lastMeasure = note.measure
             lastOffset = note.offset
+    
+    # Because time_offsets are calculated before playable notes, we need to add them in again
+    def addTimePlayableNotes(self):
+        
+        notes = self.playableNotes + self.bpmChanges
+        notes = sorted(notes, key=lambda note: note.beat)
+        
+        currentBPM = self.base_bpm
+        
+        lastBeat = 0
+        currentTime = 0
+        
+        for note in notes:
+            
+            beatDiff = note.beat - lastBeat
+            currentTime += beatDiff / currentBPM * 60
+            
+            if hasattr(note, 'note_description') and note.note_description == 'BPM Change':
+                bpm_num = note.width
+                currentBPM = Fraction(self.BPMs[bpm_num])
+            
+            lastBeat = note.beat
+            
+            note.time_offset = currentTime
             
     def addCombo(self):
         self.playableNotes.sort(key=lambda note: note.beat)
@@ -194,7 +210,7 @@ class Score():
                     ## Multiple long notes can start from the same position
                     self.playableNotes.append(
                         PlayableNote(
-                            measure=int(beat), 
+                            measure=note.measure, 
                             start_pos=start_pos,
                             width=width,
                             beat=beat,
@@ -216,7 +232,7 @@ class Score():
                     
                     self.playableNotes.append(
                         PlayableNote(
-                            measure=int(beat), 
+                            measure=note.measure, 
                             start_pos=start_pos,
                             width=width,
                             beat=beat,
@@ -243,7 +259,7 @@ class Score():
                     while current_long_note < beat:
                         self.playableNotes.append(
                             PlayableNote(
-                                measure=int(current_long_note), 
+                                measure=note.measure, ## This may be inaccurate, but as measure is not used other than debugging, it is not a priority
                                 start_pos=0, ## has to be interpolated, but for now just use 0
                                 width=1, ## determined based on relays and such
                                 beat=current_long_note,
@@ -263,7 +279,7 @@ class Score():
                     ## Adds a playable note per long note end
                     self.playableNotes.append(
                         PlayableNote(
-                            measure=int(beat), 
+                            measure=note.measure, 
                             start_pos=start_pos,
                             width=width,
                             beat=beat,
@@ -287,7 +303,7 @@ class Score():
                 
                 self.playableNotes.append(
                     PlayableNote(
-                        measure=int(beat), 
+                        measure=note.measure, 
                         start_pos=start_pos,
                         width=width,
                         beat=beat,
@@ -300,159 +316,3 @@ class Score():
                         relay=relay
                     )
                 )
-                      
-
-def findSongByName(song):
-    
-    musicDict = {}
-    
-    maxFuzz = -1
-
-    for musicId, name in lang.Music.items():
-
-        if 'title' not in musicId:
-            continue
-
-        similarity = fuzz.ratio(song.lower(), name.lower())
-        if similarity >= maxFuzz:
-            maxFuzz = similarity
-            bestMatch = musicId
-            
-    for music in masterdata.Music:
-        
-        similarity = fuzz.ratio(song.lower(), music['id'].lower())
-        if similarity >= maxFuzz:
-            maxFuzz = similarity
-            bestMatch = music
-            
-        elif music['titleLangId'] == bestMatch:
-            bestMatch = music
-            
-    print(f"Best match for '{song}' is '{bestMatch["id"]}' with similarity {maxFuzz}%")
-    
-    return bestMatch['id'], bestMatch
-
-if __name__ == "__main__":
-    import shutil
-    
-    song = 'm0321'
-    diff = 'normal'
-    
-    bestMatch, music = findSongByName(song)
-    
-    print(f"Best match for '{song}' is '{bestMatch}'")
-    diffMult = music['liveScoreCoefficientPermil']
-    try:
-        diffMult = int(diffMult)
-    except:
-        diffMult = 0
-    
-    beatmapPath = f'beatmaps/Resources/chart_{bestMatch}_{diff}.sus'
-    
-    shutil.copy(beatmapPath, slugify(f'chart_{song}_{diff}.sus'))
-    
-    with open(beatmapPath, 'r') as f:
-        content = f.readlines()
-        
-    score = Score(content)
-    score.parse()
-    score.defineNotes()
-    score.playableNotes.sort(key=lambda note: note.beat)
-    
-    # for i, note in enumerate(score.playableNotes):
-    #     print(i, note)
-
-    print(len(score.lines))
-    print(len(score.playableNotes))
-    print(score.metadata)
-    print(score.BPMs, score.bpmChanges)
-    
-    weightList = [
-        ['time_offset', 'beat', 'weight', 'real_weight']
-    ]
-    
-    bp = 198152
-    bonus = 0.497
-    difficulty = 26
-    
-    with open('rawNotes.csv', 'w') as f:
-        f.write('line_number, line, note_class, note_type, measure, beat, start_pos, width, beat_float, note_description\n')
-        for note in score.notes:
-            f.write(f"{note.line_number}, {note.line}, {note.note_class}, {note.note_type}, {note.measure}, {float(note.beat)}, {note.start_pos}, {note.width}, {float(note.beat)}, {note.note_description}\n")
-    
-    with open('playableNotes.csv', 'w') as f:
-        f.write('measure, start_pos, width, beat_float, normal, critical, flick, long_start, long_mid, long_end, relay, weight, real_weight\n')
-        for note in score.playableNotes:
-            f.write(f"{note.measure}, {note.start_pos}, {note.width}, {float(note.beat)}, {note.normal}, {note.critical}, {note.flick}, {note.long_start}, {note.long_mid}, {note.long_end}, {note.relay}, {note.weight}, {note.real_weight}\n")
-        
-    
-    totalWeight = 0
-    baseWeight = 0
-    
-    for note in score.playableNotes:
-        totalWeight += note.real_weight
-        baseWeight += note.weight
-        # weightList.append(
-        #     [str(note.time_offset), str(float(note.beat)), str(note.weight), str(note.real_weight)]
-        # )
-        
-    normal_notes = []
-    flick_notes = []
-    long_start_notes = []
-    long_end_notes = []
-    long_flick_end_notes = []
-    long_relay_notes = []
-    long_continue_notes = []
-        
-    for note in score.playableNotes:
-        
-        if note.long_start:
-            long_start_notes.append(note)
-            
-        elif note.relay:
-            long_relay_notes.append(note)
-            
-        elif note.long_end:
-            if note.flick:
-                long_flick_end_notes.append(note)
-            else:
-                long_end_notes.append(note)
-                
-        elif note.long_mid:
-            long_continue_notes.append(note)
-            
-        elif note.flick:
-            flick_notes.append(note)
-            
-        else:
-            normal_notes.append(note)
-        
-        weightList.append(
-            [str(note.time_offset), str(float(note.beat)), str(note.weight), str(note.real_weight), str(note.real_weight / totalWeight)]
-        )
-        
-    print(f'Normal Note Count: {len(normal_notes)}')
-    print(f'Flick Note Count: {len(flick_notes)}')
-    print(f'Long Start Note Count: {len(long_start_notes)}')
-    print(f'Long End Note Count: {len(long_end_notes)}')
-    print(f'Long Flick End Note Count: {len(long_flick_end_notes)}')
-    print(f'Long Relay Note Count: {len(long_relay_notes)}')
-    print(f'Long Continue Note Count: {len(long_continue_notes)}')
-    print(f'Total Notes: {len(score.playableNotes)}')
-    
-    print(f'Total Weight: {totalWeight / 1000:.2f}')
-    print(f'Base Weight: {baseWeight / 1000:.2f}')
-    
-    singleNote = 100 / baseWeight
-    difficultyMult = 1 + (difficulty - 5) * (diffMult / 1000)
-    
-    
-    print(f'Single Note Base Weight: {singleNote}')
-    print(f'Difficulty Multiplier: {difficultyMult:.3f}')
-    print(f'BP Multiplier: {bp:.2f}')
-    singleNote = singleNote * difficultyMult * bp * 2.3
-    
-    diff = 637 / singleNote
-    print(f'Difficulty: {diff}')
-    
-    print(f'Single Note Weight: {singleNote:.2f}')

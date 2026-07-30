@@ -13,9 +13,6 @@ if __name__ == "__main__":
             
         score = Score(content)
         score.parse()
-        score.defineNotes()
-        score.addRealTime()
-        score.addCombo()
         
         # print(f"Metadata: {score.metadata}")
         firstNote = min([note.time_offset for note in score.playableNotes if note.time_offset >= 0], default=None)
