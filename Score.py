@@ -1,8 +1,10 @@
-from Line import Line
-from dataClasses.Metadata import Metadata
+import math
+
 from collections import defaultdict
 from fractions import Fraction
-import math
+
+from Line import Line
+from dataClasses.Metadata import Metadata
 from notes.PlayableNote import PlayableNote
 
 class Score():
