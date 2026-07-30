@@ -65,8 +65,6 @@ with open(beatmapPath, 'r') as f:
     
 score = Score(content)
 score.parse()
-score.addRealTime()
-score.addCombo()
 score.weightArraySupport(supportSkill['Length'], supportSkill['Boost'])
 score.playableNotes.sort(key=lambda note: note.beat)
 
@@ -263,7 +261,7 @@ for i in range(len(allProcced[0])):
 x = np.linspace(expected - 6 * math.sqrt(variance), expected + 6 * math.sqrt(variance), 1000)
 
 fig, ax = plt.subplots(figsize=(12, 6))
-random_samples = 1000
+random_samples = 100000
 
 outputs = []
 
