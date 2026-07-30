@@ -10,6 +10,9 @@ charts
 *.mp4
 *.db
 *.proto
+*.json
+*.txt
+*.png
 
 beatmaps/
 output/
