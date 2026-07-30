@@ -1,9 +1,10 @@
-from Score import Score, findSongByName
+from Score import Score
 from glob import glob
 import os
 import json
 import re
 import traceback
+from tqdm import tqdm
 
 masterPath = 'master_data/json/'
 DIFFICULTIES = ['Easy', 'Normal', 'Hard', 'Expert']
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     
     basicPath = 'beatmaps/Resources/*.sus'
     
-    for fp in glob(basicPath):
+    for fp in tqdm(glob(basicPath), desc="Processing charts"):
         try:
             with open(fp, 'r') as f:
                 content = f.readlines()
@@ -70,7 +71,6 @@ if __name__ == "__main__":
                 
             score = Score(content)
             score.parse()
-            score.defineNotes()
 
             normal_notes = float(score.metadata.normal_note_count) * 1000
             flick_notes = float(score.metadata.flick_note_count) * 1050
@@ -98,7 +98,7 @@ if __name__ == "__main__":
             chart['title'] = langData.Music.get(music['titleLangId'], music['titleLangId'])
             chart['liveScoreCoefficientPermil'] = music['liveScoreCoefficientPermil']
             chart['playingSeconds'] = music['playingSeconds']
-            chart['beatmapSeconds'] = max(score.playableNotes, key=lambda note: note.time_offset).time_offset
+            chart['beatmapSeconds'] = float(max(score.playableNotes, key=lambda note: note.time_offset).time_offset)
             chart['chorusStartMillisecond'] = music['chorusStartMillisecond']
             chart['chorusEndMillisecond'] = music['chorusEndMillisecond']
             chart['difficulty'] = diff

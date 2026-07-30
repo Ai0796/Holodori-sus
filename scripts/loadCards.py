@@ -1,13 +1,11 @@
 import random
 
 from Card.Card import Card
-from Score import Score, findSongByName
+from Score import Score
 
-from glob import glob
-import os
-import json
+from scripts.findSongByName import findSongByName
+
 import itertools
-import re
 import numpy as np
 import time
 from tqdm import tqdm
@@ -67,7 +65,6 @@ with open(beatmapPath, 'r') as f:
     
 score = Score(content)
 score.parse()
-score.defineNotes()
 score.addRealTime()
 score.addCombo()
 score.weightArraySupport(supportSkill['Length'], supportSkill['Boost'])
