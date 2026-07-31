@@ -69,7 +69,7 @@ class ActiveSkill():
     
     def applyToChart(self, playableNotes):
         
-        if self.noteWeights is not None:
+        if self.noteWeights is not None and len(self.noteWeights) == len(playableNotes):
             return self.noteWeights
         
         mult = self.getMult()
@@ -78,7 +78,7 @@ class ActiveSkill():
         probability = self.getProbability()
         
         self.noteWeights = []
-        self.expectedWeights = []
+        self.supportWeight = []
         
         idx = 0
         skillStart = cooldown
@@ -89,7 +89,7 @@ class ActiveSkill():
             
             if note.time_offset >= skillStart and note.time_offset <= skillEnd:
                 self.noteWeights.append(note.real_weight * mult)
-                self.expectedWeights.append(note.real_weight * mult * probability)
+                self.supportWeight.append(note.real_weight * (mult * (1 + note.support)))
                 idx += 1
                 continue
                 
@@ -98,11 +98,11 @@ class ActiveSkill():
                 skillEnd += cooldown
             
             self.noteWeights.append(0)
-            self.expectedWeights.append(0)
+            self.supportWeight.append(0)
             idx += 1
         
         self.noteWeights = np.array(self.noteWeights)
-        self.expectedWeights = np.array(self.expectedWeights)
+        self.supportWeight = np.array(self.supportWeight)
         return self.noteWeights
     
     def getSkillProcs(self, playableNotes):
@@ -206,7 +206,7 @@ class ActiveSkill():
         return noteWeights
         
     def getCooldown(self):
-        return float(self.cooldown / 1000.0)
+        return float(self.cooldown / 1000.0) * 0.88
     
     def getDuration(self):
         return float(self.duration / 1000.0)
@@ -216,11 +216,11 @@ class ActiveSkill():
     
     def __str__(self):
         
-        # mult = self.getMult()
-        # cooldown = self.getCooldown()
-        # duration = self.getDuration()
-        # probability = self.getProbability()
+        mult = self.getMult()
+        cooldown = self.getCooldown()
+        duration = self.getDuration()
+        probability = self.getProbability()
         
-        # return f'{mult:.2f}x for {duration:.2f}s with {probability:.2%} chance and {cooldown:.2f}s cooldown'
+        return f'{mult * 100:.2f}% for {duration:.2f}s with {probability:.2%} chance and {cooldown:.2f}s cooldown'
         
         return self.description
