@@ -77,32 +77,25 @@ class ActiveSkill():
         duration = self.getDuration()
         probability = self.getProbability()
         
-        self.noteWeights = []
-        self.supportWeight = []
+        self.noteWeights = [0] * len(playableNotes)
         
         idx = 0
         skillStart = cooldown
         skillEnd = cooldown + duration
         
-        while idx < len(playableNotes):
+        for idx in range(len(playableNotes)):
             note = playableNotes[idx]
             
             if note.time_offset >= skillStart and note.time_offset <= skillEnd:
-                self.noteWeights.append(note.real_weight * mult)
-                self.supportWeight.append(note.real_weight * (mult * (1 + note.support)))
-                idx += 1
+                self.noteWeights[idx] = note.real_weight * mult
                 continue
                 
             elif note.time_offset > skillEnd:
                 skillStart += cooldown
                 skillEnd += cooldown
-            
-            self.noteWeights.append(0)
-            self.supportWeight.append(0)
-            idx += 1
         
         self.noteWeights = np.array(self.noteWeights)
-        self.supportWeight = np.array(self.supportWeight)
+
         return self.noteWeights
     
     def getSkillProcs(self, playableNotes):
