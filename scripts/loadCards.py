@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import random
 
 from Card.Card import Card
@@ -17,6 +18,23 @@ import scipy.stats as stats
 
 from lib.language import Lang
 from lib.master_data import MasterData
+import json
+
+def searchMusicMeta(songName, difficulty):
+    
+    with open('music_meta.json', 'r') as f:
+        musicMeta = json.load(f)
+    
+    for song in musicMeta:
+        if song['title'].lower() == songName.lower() and song['difficulty'].lower() == difficulty.lower():
+            return song
+    return None
+
+@dataclass
+class Note:
+    time_offset: float
+    weight: float
+    real_weight: float = 0.0
 
 lockedChar = 'card-00006-5-uniq-0007-00' ## There will always be a required card on the team
     
@@ -46,25 +64,23 @@ for card in MasterDataObj.Card:
     cardObjects.append(card_obj)
 # exit()
         
-song = 'm0184'
+song = 'supernova'
 diff = 'expert'
 
-bestMatch = findSongByName(song)[0]
-beatmapPath = f'beatmaps/Resources/chart_{bestMatch}_{diff}.sus'
+bestMatch = searchMusicMeta(song, diff)
 
-shutil.copy(beatmapPath, f'selected/chart_{song}_{diff}.sus')
+playableNotes = []
+supportSkills = []
 
-with open(beatmapPath, 'r') as f:
-    content = f.readlines()
+for note in bestMatch['notes']:
+    playableNotes.append(Note(time_offset=note[0], weight=note[1], real_weight=note[1]))
     
-score = Score(content)
-score.parse()
-score.playableNotes.sort(key=lambda note: note.beat)
+for note in bestMatch['supportSkills']:
+    supportSkills.append(Note(time_offset=note, weight=0))
+    
+supportSkillTimes = [note.time_offset for note in supportSkills]
 
-totalWeight = 0
-
-for note in score.playableNotes:
-    totalWeight += note.weight
+totalWeight = bestMatch['base_weight']
 
 skillSet = set()
 skillMap = defaultdict(list)
@@ -93,8 +109,6 @@ characterCombination = []
 comboWeights = []
 comboExpected = []
 
-supportSkillTimes = [note.time_offset for note in score.skills]
-
 # score.weightArraySupport(supportSkill['Length'], supportSkill['Boost'])
 
 bestCombo = None
@@ -115,7 +129,7 @@ torch.backends.cudnn.benchmark = True
 all_cards = [lockedCardObj] + list(filtered)
 card_id_to_idx = {card.card_id: i for i, card in enumerate(all_cards)}
 num_cards = len(all_cards)
-num_notes = len(score.playableNotes)
+num_notes = len(playableNotes)
 
 active_tensor = torch.zeros((num_cards, num_notes), dtype=torch.float32, device=device)
 support_tensor = torch.zeros((num_cards, 5, num_notes), dtype=torch.float32, device=device)
@@ -124,11 +138,11 @@ for card in all_cards:
     c_idx = card_id_to_idx[card.card_id]
     
     # Pre-calculate active skill array
-    act = card.active_skill.applyToChart(score.playableNotes)
+    act = card.active_skill.applyToChart(playableNotes)
     active_tensor[c_idx] = torch.tensor(act, dtype=torch.float32, device=device)
     
     # Pre-calculate support skill multipliers
-    sup = card.special_skill.applyToChart(score.playableNotes, supportSkillTimes)
+    sup = card.special_skill.applyToChart(playableNotes, supportSkillTimes)
     for p in range(1, 6):
         mult = np.where(sup[:, 0] == p, sup[:, 1], 1.0)
         support_tensor[c_idx, p - 1] = torch.tensor(mult, dtype=torch.float32, device=device)
@@ -153,6 +167,9 @@ combo_matrix[:, 1:] = torch.tensor(raw_combos, dtype=torch.long, device=device)
 best_scores_per_combo = torch.zeros(total_combos, dtype=torch.float32, device=device)
 best_perms_per_combo = torch.zeros(total_combos, dtype=torch.long, device=device)
 
+# import os
+# os.environ['PYTORCH_JIT'] = '0'
+
 # 4. FUSED JIT CUDA KERNEL FOR RTX 3090 L2 CACHE
 @torch.jit.script
 def evaluate_batch_fused(b_act, b_sup, perm_tensor):
@@ -165,33 +182,39 @@ def evaluate_batch_fused(b_act, b_sup, perm_tensor):
     """
     B = b_act.shape[0]
     
-    best_scores = torch.zeros(B, device=b_act.device, dtype=torch.float32)
+    # Track max scores (use -1.0 so 0.0 scores record perm index 0 properly)
+    best_scores = torch.full((B,), -1.0, device=b_act.device, dtype=torch.float32)
     best_perms = torch.zeros(B, device=b_act.device, dtype=torch.long)
     
+    # Max active skill across the 5 cards in team at each note N
+    # Resulting shape: (B, N)
+    max_act = torch.maximum(b_act[:, 0, :], b_act[:, 1, :])
+    max_act = torch.maximum(max_act, b_act[:, 2, :])
+    max_act = torch.maximum(max_act, b_act[:, 3, :])
+    max_act = torch.maximum(max_act, b_act[:, 4, :])
+    
     for p_idx in range(120):
+        # Extract support timing mappings for this permutation
         p0 = perm_tensor[p_idx, 0]
         p1 = perm_tensor[p_idx, 1]
         p2 = perm_tensor[p_idx, 2]
         p3 = perm_tensor[p_idx, 3]
         p4 = perm_tensor[p_idx, 4]
         
-        # Multiply skills by multipliers for permutation p_idx
-        s0 = b_act[:, 0, :] * b_sup[:, 0, p0, :]
-        s1 = b_act[:, 1, :] * b_sup[:, 1, p1, :]
-        s2 = b_act[:, 2, :] * b_sup[:, 2, p2, :]
-        s3 = b_act[:, 3, :] * b_sup[:, 3, p3, :]
-        s4 = b_act[:, 4, :] * b_sup[:, 4, p4, :]
+        # Max active support multiplier across the 5 cards for timing windows p0..p4
+        # Defaults to 1.0 when no support skill is active
+        sup_comb = torch.maximum(b_sup[:, 0, p0, :], b_sup[:, 1, p1, :])
+        sup_comb = torch.maximum(sup_comb, b_sup[:, 2, p2, :])
+        sup_comb = torch.maximum(sup_comb, b_sup[:, 3, p3, :])
+        sup_comb = torch.maximum(sup_comb, b_sup[:, 4, p4, :])
         
-        # Element-wise maximum across the 5 cards
-        m = torch.maximum(s0, s1)
-        m = torch.maximum(m, s2)
-        m = torch.maximum(m, s3)
-        m = torch.maximum(m, s4)
+        # Element-wise product: (real_weight * active_mult) * support_mult
+        note_scores = max_act * sup_comb
         
-        # Sum across all playable notes -> Shape (B,)
-        perm_totals = torch.sum(m, dim=1)
+        # Sum across notes and divide by base_weight -> Shape (B,)
+        perm_totals = torch.sum(note_scores, dim=1)
         
-        # In-place tracking of max perms
+        # Update best score and perm index in-place
         mask = perm_totals > best_scores
         best_scores = torch.where(mask, perm_totals, best_scores)
         best_perms = torch.where(mask, p_idx, best_perms)
@@ -235,7 +258,7 @@ bestCombo = [all_cards[idx] for idx in best_combo_card_indices[1:]]
 # PRINT FINAL RESULTS
 print("\n" + "="*50)
 print(f"Worst weight: {worstWeight:.2f}")
-print(f"Best weight: {maxWeight:.2f} ({maxWeight / totalWeight:.2%} of total weight)")
+print(f"Best weight: {maxWeight:.2f} ({maxWeight/totalWeight:.2%} of total weight)")
 print(f"Locked card: {locked_card_result.character_name} ({locked_card_result.card_name})")
 
 bestCombo = [locked_card_result] + bestCombo  # Include locked card in the final output
