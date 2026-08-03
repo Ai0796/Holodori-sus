@@ -3,7 +3,7 @@ from lib.language import Lang
 
 class PassiveSkill():
     
-    def __init__(self, master_data: MasterData, lang: Lang):
+    def __init__(self, card):
         self.skill_id = None
         self.level = None
         self.skill_effect = None
@@ -16,8 +16,9 @@ class PassiveSkill():
         
         self.note_weights = None
         
-        self.master_data = master_data
-        self.lang = lang
+        self.card = card
+        self.master_data = card.master_data
+        self.lang = card.lang
         
     def initByName(self, skill_id):
         skills = self.master_data.LivePassiveSkillLevel
@@ -33,6 +34,9 @@ class PassiveSkill():
         self.skill_effect_id = skill_object.get('livePassiveSkillEffectGroupId', None)
         self.descriptionAsset = skill_object.get('descriptionLangId', None)
         self.description = self.lang.LivePassiveSkillLevel.get(self.descriptionAsset, None)
+        
+        ## might not have one
+        self.skill_trigger = skill_object.get('liveSkillTriggerGroupId', None)
         
         self.skill_effect = self.master_data.getEntity('LivePassiveSkillEffect', self.skill_effect_id, 'groupId')
         
@@ -58,3 +62,8 @@ class PassiveSkill():
     def __str__(self):
         
         return f"Passive Skill: {self.description} ({self.skill_effect_description} - {self.skill_effect_value})"
+    
+class AttributePassive():
+    def __init__(self, skillString, master_data: MasterData, lang: Lang):
+        ## Example: live_skill_effect_target-attribute-attribute_2-2
+        skillParts = skillString.split('_')[3:]

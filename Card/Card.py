@@ -32,15 +32,15 @@ class Card():
         self.sense_mult = card_object.get('sensePermilMultiply', None)
         
         if 'liveActiveSkillId' in card_object:
-            self.active_skill = ActiveSkill(self.master_data, self.lang)
+            self.active_skill = ActiveSkill(self)
             self.active_skill.initByName(card_object['liveActiveSkillId'])
             
         if 'livePassiveSkillId' in card_object:
-            self.passive_skill = PassiveSkill(self.master_data, self.lang)
+            self.passive_skill = PassiveSkill(self)
             self.passive_skill.initByName(card_object['livePassiveSkillId'])
             
         if 'liveSpecialSkillId' in card_object:
-            self.special_skill = SpecialSkill(self.master_data, self.lang)
+            self.special_skill = SpecialSkill(self)
             self.special_skill.initByName(card_object['liveSpecialSkillId'])
             
     def initById(self, card_id):

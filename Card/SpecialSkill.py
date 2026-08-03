@@ -8,7 +8,7 @@ from lib.language import Lang
 
 class SpecialSkill():
     
-    def __init__(self, master_data: MasterData, lang: Lang):
+    def __init__(self, card):
         self.skill_id = None
         self.level = None
         self.skill_effect = None
@@ -21,8 +21,9 @@ class SpecialSkill():
         
         self.noteWeights = None
         
-        self.master_data = master_data
-        self.lang = lang
+        self.card = card
+        self.master_data = card.master_data
+        self.lang = card.lang
         
     def initByName(self, skill_id):
         skills = self.master_data.LiveSpecialSkillLevel
