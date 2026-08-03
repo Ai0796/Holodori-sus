@@ -25,6 +25,7 @@ class Card():
         self.card_name = self.lang.Card.get(card_object['nameLangId'], None)
         
         self.character_name = self.master_data.getKeyById('Character', 'nameEng', card_object['characterId'])
+        self.groups = self.master_data.getKeyById('Character', 'regularCharacterGroupingIds', card_object['characterId'])
         
         self.performance_mult = card_object.get('performancePermilMultiply', None)
         self.technique_mult = card_object.get('techniquePermilMultiply', None)
