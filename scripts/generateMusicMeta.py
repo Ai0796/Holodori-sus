@@ -103,6 +103,9 @@ if __name__ == "__main__":
             chart['chorusEndMillisecond'] = music['chorusEndMillisecond']
             chart['difficulty'] = diff
             chart['difficultyLevel'] = musicDiff['difficultyLevel']
+            chart['measure_count'] = int(score.metadata.measure_count)
+            chart['basebpm'] = float(score.metadata.basebpm)
+            chart['full_combo_note_count'] = int(score.metadata.full_combo_note_count)
             chart['normalNoteCount'] = int(score.metadata.normal_note_count)
             chart['flickNoteCount'] = int(score.metadata.flick_note_count)
             chart['longStartNoteCount'] = int(score.metadata.long_start_note_count)
